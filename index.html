@@ -1,574 +1,530 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>初三9班智能语音跑圈计数器（手机兼容版）</title>
-    <!-- 引入拼音库 -->
-    <script src="https://unpkg.com/pinyin-pro"></script>
-    <style>
-        :root {
-            --primary-color: #4CAF50;
-            --danger-color: #f44336;
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --highlight-color: #2196F3;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-color);
-            margin: 0;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding-bottom: 100px; /* 底部留白给日志 */
-        }
-
-        h1 { color: #333; margin: 10px 0; font-size: 1.5rem; text-align: center; }
-
-        /* 控制面板 */
-        .control-panel {
-            background: var(--card-bg);
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            width: 100%;
-            max-width: 600px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 8px;
-        }
-
-        .voice-status {
-            font-weight: bold;
-            color: #666;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-        }
-
-        .voice-status.listening { color: var(--primary-color); }
-        .voice-status.listening::before {
-            content: '';
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: var(--primary-color);
-            margin-right: 6px;
-            box-shadow: 0 0 8px var(--primary-color);
-            animation: pulse 1s infinite;
-        }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-
-        /* 按钮组 */
-        .btn-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        
-        .btn-row {
-            display: flex;
-            gap: 8px;
-            justify-content: space-between;
-        }
-
-        button {
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            color: white;
-            font-weight: bold;
-            touch-action: manipulation; /* 优化触屏点击 */
-        }
-        button:active { opacity: 0.7; transform: scale(0.98); }
-
-        .btn-start { background-color: var(--primary-color); grid-column: span 2; font-size: 1.1rem; }
-        .btn-stop { background-color: #9e9e9e; grid-column: span 2; }
-        .btn-global-add { background-color: var(--highlight-color); flex: 1; }
-        .btn-global-reset { background-color: var(--danger-color); flex: 1; }
-        .btn-fix { 
-            background-color: #FF9800; 
-            width: 100%; 
-            margin-top: 5px;
-            display: none; /* 默认隐藏 */
-        }
-
-        /* 调试日志 (新增) */
-        .debug-log {
-            font-size: 12px;
-            color: #888;
-            background: #eee;
-            padding: 5px;
-            border-radius: 4px;
-            max-height: 60px;
-            overflow-y: auto;
-            margin-top: 5px;
-            font-family: monospace;
-        }
-
-        /* 学生列表 */
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr); /* 手机两列 */
-            gap: 10px;
-            width: 100%;
-            max-width: 600px;
-        }
-        @media (min-width: 600px) {
-            .grid-container { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-        }
-
-        .student-card {
-            background: var(--card-bg);
-            border-radius: 8px;
-            padding: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            text-align: center;
-            border: 2px solid transparent;
-            transition: transform 0.2s;
-        }
-        .student-card.just-updated {
-            background-color: #e8f5e9;
-            border-color: var(--primary-color);
-            transform: scale(1.02);
-        }
-
-        .student-name { font-size: 1.1em; font-weight: bold; color: #333; }
-        .lap-display { font-size: 2em; font-weight: bold; color: var(--primary-color); margin: 2px 0; }
-        
-        .card-controls { display: flex; gap: 5px; justify-content: center; margin-top: 5px; }
-        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 4px; }
-        .btn-add { background-color: var(--primary-color); }
-        .btn-sub { background-color: #FF9800; }
-
-        /* 照片区域 */
-        .photo-area {
-            border-top: 1px dashed #ccc;
-            padding-top: 10px;
-            text-align: center;
-        }
-        .photo-input-label {
-            display: inline-block;
-            background: #607D8B;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-        }
-        .photo-gallery {
-            display: flex;
-            overflow-x: auto;
-            gap: 8px;
-            padding: 10px 0;
-        }
-        .photo-gallery img {
-            height: 100px;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-        }
-
-        /* 弹窗 */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            width: 85%;
-            max-width: 320px;
-            text-align: center;
-        }
-        .modal select {
-            width: 100%;
-            padding: 10px;
-            margin: 15px 0;
-            font-size: 16px;
-            border: 1px solid #ccc;
-        }
-        .modal-buttons { display: flex; gap: 10px; justify-content: center; }
-    </style>
-</head>
-<body>
-
-    <h1>🏃‍♂️ 初三9班语音跑圈计数 (手机兼容版)</h1>
-
-    <div class="control-panel">
-        <div class="status-bar">
-            <div id="voiceStatus" class="voice-status">🎙️ 点击下方按钮开始</div>
-            <div style="font-size:0.8rem; color:#999;" id="wakeLockStatus">屏幕常亮: 未激活</div>
-        </div>
-
-        <!-- 调试日志窗口 -->
-        <div id="debugLog" class="debug-log">日志窗口: 等待操作...</div>
-
-        <div class="btn-group">
-            <button onclick="toggleSpeech()" id="voiceBtn" class="btn-start">🎙️ 开启语音监听</button>
-        </div>
-
-        <!-- 修正按钮，动态显示 -->
-        <button id="fixBtn" class="btn-fix" onclick="triggerFix()">❌ 撤回刚才的识别并修正</button>
-
-        <div class="btn-row">
-            <button onclick="globalChange(1)" class="btn-global-add">全班 +1</button>
-            <button onclick="globalReset()" class="btn-global-reset">清零</button>
-        </div>
-
-        <div class="photo-area">
-            <label class="photo-input-label">
-                📷 添加照片
-                <input type="file" multiple accept="image/*" style="display: none;" onchange="handlePhotos(this)">
-            </label>
-            <div class="photo-gallery" id="photoGallery"></div>
-        </div>
-    </div>
-
-    <div class="grid-container" id="studentGrid"></div>
-
-    <!-- 修正弹窗 -->
-    <div id="fixModal" class="modal">
-        <div class="modal-content">
-            <h3>🛠️ 识别修正</h3>
-            <p>识别文本：<strong id="wrongTranscript" style="color: #d32f2f;"></strong></p>
-            <p>请选择正确学生：</p>
-            <select id="studentSelect"></select>
-            <div class="modal-buttons">
-                <button onclick="confirmFix()" class="btn-add">确认</button>
-                <button onclick="closeFixModal()" class="btn-stop">取消</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // --- 1. 数据与初始化 ---
-        const studentList = [
-            "熊梓涵", "张梓炟", "陈瑾芮", "张淞文", "郭永骏", "王美童", "梁明轩", "顾凌伊",
-            "范一行", "陈涵雨欣", "费宣博", "韦元泽", "张烜宁", "向嘉宇", "陆怡煊", "汪晓涵",
-            "张嘉仁", "高钰涵", "龙瑶琳", "王康宇", "李朝智", "李俊仪", "易芸竹", "袁宇泽",
-            "熊梓凯", "李雨苗", "李至圣", "张皓哲", "何一凡", "赵子琪", "田袁慧芝", "柯义溱"
-        ].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-
-        let studentData = {};
-        let recognitionMap = JSON.parse(localStorage.getItem('runCounter_map')) || {};
-        let studentPinyins = {};
-        const { pinyin } = pinyinPro;
-
-        // 初始化拼音索引
-        setTimeout(() => {
-            studentList.forEach(name => {
-                studentData[name] = 0;
-                // 生成无声调拼音用于模糊匹配
-                studentPinyins[name] = pinyin(name, { toneType: 'none', type: 'array' }).join('');
-            });
-            initUI();
-            logDebug("系统就绪，拼音索引已构建");
-        }, 500);
-
-        // --- 2. 界面逻辑 ---
-        const grid = document.getElementById('studentGrid');
-        const debugEl = document.getElementById('debugLog');
-        const fixBtn = document.getElementById('fixBtn');
-
-        function logDebug(msg) {
-            const time = new Date().toLocaleTimeString();
-            debugEl.textContent = `[${time}] ${msg}`;
-            console.log(msg);
-        }
-
-        function initUI() {
-            grid.innerHTML = '';
-            const select = document.getElementById('studentSelect');
-            select.innerHTML = '';
-
-            studentList.forEach(name => {
-                // 卡片
-                const card = document.createElement('div');
-                card.className = 'student-card';
-                card.id = `card-${name}`;
-                card.innerHTML = `
-                    <div class="student-name">${name}</div>
-                    <div class="lap-display" id="count-${name}">0</div>
-                    <div class="card-controls">
-                        <button class="btn-sm btn-sub" onclick="updateLap('${name}', -1)">-</button>
-                        <button class="btn-sm btn-add" onclick="updateLap('${name}', 1)">+</button>
-                    </div>
-                `;
-                grid.appendChild(card);
-
-                // 下拉框选项
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                select.appendChild(option);
-            });
-        }
-
-        let lastAutoAction = null; 
-
-        function updateLap(name, change, isAuto = false) {
-            studentData[name] = Math.max(0, studentData[name] + change);
-            document.getElementById(`count-${name}`).textContent = studentData[name];
-
-            if (change > 0) {
-                const card = document.getElementById(`card-${name}`);
-                card.classList.remove('just-updated');
-                void card.offsetWidth;
-                card.classList.add('just-updated');
-                
-                // 自动滚动到该学生位置 (方便手机查看)
-                if(isAuto) {
-                    card.scrollIntoView({ behavior: "smooth", block: "center" });
-                }
-                setTimeout(() => card.classList.remove('just-updated'), 1000);
-            }
-        }
-
-        // --- 3. 语音识别 (手机兼容核心修改) ---
-        let recognition;
-        let isListening = false;
-        let wakeLock = null;
-
-        // 保持屏幕常亮
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    document.getElementById('wakeLockStatus').textContent = "屏幕常亮: ✅";
-                    logDebug("屏幕常亮已激活");
-                }
-            } catch (err) {
-                logDebug("无法激活屏幕常亮");
-            }
-        }
-
-        function toggleSpeech() {
-            if (isListening) {
-                stopRecognition();
-            } else {
-                startRecognition();
-            }
-        }
-
-        function startRecognition() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                alert("当前浏览器不支持语音识别，请使用最新版Chrome或Edge。");
-                return;
-            }
-
-            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new Speech();
-            
-            // ★★★ 核心修改：Android 必须设置为 false 才能稳定 ★★★
-            recognition.continuous = false; 
-            recognition.interimResults = false; 
-            recognition.lang = 'zh-CN';
-
-            // 错误处理
-            recognition.onerror = (event) => {
-                logDebug(`Error: ${event.error}`);
-                if (event.error === 'not-allowed') {
-                    alert("请在浏览器设置中允许麦克风权限！");
-                    stopRecognition();
-                }
-                // 'no-speech' 是常见的，表示没听到声音，忽略它让 onend 重启
-            };
-
-            // 结果处理
-            recognition.onresult = (event) => {
-                const results = event.results;
-                const transcript = results[results.length - 1][0].transcript.trim();
-                logDebug(`听到: "${transcript}"`);
-                processVoiceCommand(transcript);
-            };
-
-            // ★★★ 核心修改：无限重启逻辑 ★★★
-            recognition.onend = () => {
-                if (isListening) {
-                    // 稍微延迟重启，避免CPU占用过高，也给Android音频通道一点缓冲
-                    // logDebug("重启监听..."); 
-                    setTimeout(() => {
-                        try {
-                            recognition.start();
-                        } catch(e) {
-                            console.error("Restart failed", e);
-                            isListening = false;
-                            updateBtnState();
-                        }
-                    }, 200); 
-                } else {
-                    updateBtnState();
-                }
-            };
-
-            // 启动
-            try {
-                recognition.start();
-                isListening = true;
-                updateBtnState();
-                requestWakeLock(); // 请求常亮
-                logDebug("监听已启动，请说话...");
-            } catch (e) {
-                logDebug("启动失败，请刷新页面重试");
-            }
-        }
-
-        function stopRecognition() {
-            isListening = false;
-            if (recognition) recognition.stop();
-            if (wakeLock) wakeLock.release();
-            document.getElementById('wakeLockStatus').textContent = "屏幕常亮: 未激活";
-            updateBtnState();
-            logDebug("监听已停止");
-        }
-
-        function updateBtnState() {
-            const btn = document.getElementById('voiceBtn');
-            const status = document.getElementById('voiceStatus');
-            if (isListening) {
-                btn.textContent = "🔴 停止监听";
-                btn.className = "btn-stop";
-                status.textContent = "👂 正在聆听...";
-                status.classList.add('listening');
-            } else {
-                btn.textContent = "🎙️ 开启语音监听";
-                btn.className = "btn-start";
-                status.textContent = "🎙️ 点击开启";
-                status.classList.remove('listening');
-            }
-        }
-
-        // --- 4. 匹配算法与修正 ---
-        function processVoiceCommand(transcript) {
-            const cleanText = transcript.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()。\s]/g,"");
-            
-            // 修正匹配
-            let matchName = null;
-            
-            // 1. 查记忆表
-            if (recognitionMap[cleanText]) {
-                matchName = recognitionMap[cleanText];
-                logDebug(`记忆匹配: ${matchName}`);
-            } else {
-                // 2. 拼音匹配
-                const inputPinyin = pinyin(cleanText, { toneType: 'none', type: 'array' }).join('');
-                let minDist = Infinity;
-                
-                studentList.forEach(name => {
-                    const target = studentPinyins[name];
-                    const dist = levenshtein(inputPinyin, target);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        matchName = name;
-                    }
-                });
-                
-                // 阈值保护：如果距离太远（比如瞎说话），可能不匹配
-                // 但为了体验，只要有声音大概率是名字，这里稍微放宽
-                if (minDist > 4) matchName = null; 
-                else logDebug(`拼音匹配: ${cleanText} -> ${matchName} (Diff:${minDist})`);
-            }
-
-            if (matchName) {
-                updateLap(matchName, 1, true);
-                // 记录上次操作用于撤回
-                lastAutoAction = { raw: cleanText, name: matchName };
-                fixBtn.style.display = 'block';
-                fixBtn.textContent = `撤回 "${cleanText}" -> ${matchName}`;
-            } else {
-                logDebug("无法匹配到同学");
-            }
-        }
-
-        // 编辑距离
-        function levenshtein(s, t) {
-            const d = [];
-            for (let i = 0; i <= s.length; i++) d[i] = [i];
-            for (let j = 0; j <= t.length; j++) d[0][j] = j;
-            for (let i = 1; i <= s.length; i++) {
-                for (let j = 1; j <= t.length; j++) {
-                    const cost = s[i - 1] === t[j - 1] ? 0 : 1;
-                    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
-                }
-            }
-            return d[s.length][t.length];
-        }
-
-        // --- 5. 修正与辅助 ---
-        function triggerFix() {
-            if (!lastAutoAction) return;
-            // 撤回分数
-            updateLap(lastAutoAction.name, -1);
-            // 弹窗
-            document.getElementById('wrongTranscript').textContent = lastAutoAction.raw;
-            document.getElementById('studentSelect').value = lastAutoAction.name; // 默认选中刚才匹配错的
-            document.getElementById('fixModal').style.display = 'flex';
-        }
-
-        function confirmFix() {
-            const correctName = document.getElementById('studentSelect').value;
-            const wrongText = lastAutoAction.raw;
-            
-            // 加分
-            updateLap(correctName, 1, true);
-            // 学习
-            recognitionMap[wrongText] = correctName;
-            localStorage.setItem('runCounter_map', JSON.stringify(recognitionMap));
-            
-            logDebug(`已学习: "${wrongText}" = ${correctName}`);
-            closeFixModal();
-        }
-
-        function closeFixModal() {
-            document.getElementById('fixModal').style.display = 'none';
-            fixBtn.style.display = 'none';
-        }
-
-        function globalChange(val) { studentList.forEach(n => updateLap(n, val)); }
-        function globalReset() { if(confirm("清零全班数据?")) studentList.forEach(n => updateLap(n, -studentData[n])); }
-
-        function handlePhotos(input) {
-            const gallery = document.getElementById('photoGallery');
-            if (input.files) {
-                Array.from(input.files).forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const img = document.createElement('img');
-                        img.src = e.target.result;
-                        img.onclick = () => {
-                            // 简单全屏预览
-                            const win = window.open("");
-                            win.document.write(`<img src="${e.target.result}" style="width:100%">`);
-                        };
-                        gallery.appendChild(img);
-                    }
-                    reader.readAsDataURL(file);
-                });
-            }
-        }
-    </script>
-</body>
-</html>
+<!DOCTYPE html>  
+<html lang="zh-CN">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
+    <title>初三9班智能语音跑圈计数器（手机兼容版）</title>  
+    <!-- 引入拼音库 -->  
+    <script src="https://unpkg.com/pinyin-pro"></script>  
+    <style>  
+        :root {  
+            --primary-color: #4CAF50;  
+            --danger-color: #f44336;  
+            --bg-color: #f0f2f5;  
+            --card-bg: #ffffff;  
+            --highlight-color: #2196F3;  
+        }  
+  
+        body {  
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;  
+            background-color: var(--bg-color);  
+            margin: 0;  
+            padding: 10px;  
+            display: flex;  
+            flex-direction: column;  
+            align-items: center;  
+            padding-bottom: 100px; /* 底部留白给日志 */  
+        }  
+  
+        h1 { color: #333; margin: 10px 0; font-size: 1.5rem; text-align: center; }  
+  
+        /* 控制面板 */  
+        .control-panel {  
+            background: var(--card-bg);  
+            padding: 15px;  
+            border-radius: 12px;  
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);  
+            position: sticky;  
+            top: 0;  
+            z-index: 100;  
+            width: 100%;  
+            max-width: 600px;  
+            display: flex;  
+            flex-direction: column;  
+            gap: 10px;  
+            margin-bottom: 15px;  
+        }  
+  
+        .status-bar {  
+            display: flex;  
+            justify-content: space-between;  
+            align-items: center;  
+            background: #f5f5f5;  
+            padding: 8px 12px;  
+            border-radius: 8px;  
+        }  
+  
+        .voice-status {  
+            font-weight: bold;  
+            color: #666;  
+            font-size: 0.9rem;  
+            display: flex;  
+            align-items: center;  
+        }  
+  
+        .voice-status.listening { color: var(--primary-color); }  
+        .voice-status.listening::before {  
+            content: '';  
+            display: inline-block;  
+            width: 10px;  
+            height: 10px;  
+            border-radius: 50%;  
+            background-color: var(--primary-color);  
+            margin-right: 6px;  
+            box-shadow: 0 0 8px var(--primary-color);  
+            animation: pulse 1s infinite;  
+        }  
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }  
+  
+        /* 按钮组 */  
+        .btn-group {  
+            display: grid;  
+            grid-template-columns: 1fr 1fr;  
+            gap: 10px;  
+        }  
+          
+        .btn-row {  
+            display: flex;  
+            gap: 8px;  
+            justify-content: space-between;  
+        }  
+  
+        button {  
+            border: none;  
+            padding: 12px;  
+            border-radius: 8px;  
+            font-size: 14px;  
+            color: white;  
+            font-weight: bold;  
+            touch-action: manipulation; /* 优化触屏点击 */  
+        }  
+        button:active { opacity: 0.7; transform: scale(0.98); }  
+  
+        .btn-start { background-color: var(--primary-color); grid-column: span 2; font-size: 1.1rem; }  
+        .btn-stop { background-color: #9e9e9e; grid-column: span 2; }  
+        .btn-global-add { background-color: var(--highlight-color); flex: 1; }  
+        .btn-global-reset { background-color: var(--danger-color); flex: 1; }  
+        .btn-fix {   
+            background-color: #FF9800;   
+            width: 100%;   
+            margin-top: 5px;  
+            display: none; /* 默认隐藏 */  
+        }  
+  
+        /* 调试日志 */  
+        .debug-log {  
+            font-size: 12px;  
+            color: #888;  
+            background: #eee;  
+            padding: 5px;  
+            border-radius: 4px;  
+            max-height: 60px;  
+            overflow-y: auto;  
+            margin-top: 5px;  
+            font-family: monospace;  
+        }  
+  
+        /* 学生列表 */  
+        .grid-container {  
+            display: grid;  
+            grid-template-columns: repeat(2, 1fr); /* 手机两列 */  
+            gap: 10px;  
+            width: 100%;  
+            max-width: 600px;  
+        }  
+        @media (min-width: 600px) {  
+            .grid-container { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }  
+        }  
+  
+        .student-card {  
+            background: var(--card-bg);  
+            border-radius: 8px;  
+            padding: 10px;  
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);  
+            text-align: center;  
+            border: 2px solid transparent;  
+            transition: transform 0.2s;  
+        }  
+        .student-card.just-updated {  
+            background-color: #e8f5e9;  
+            border-color: var(--primary-color);  
+            transform: scale(1.02);  
+        }  
+  
+        .student-name { font-size: 1.1em; font-weight: bold; color: #333; }  
+        .lap-display { font-size: 2em; font-weight: bold; color: var(--primary-color); margin: 2px 0; }  
+          
+        .card-controls { display: flex; gap: 5px; justify-content: center; margin-top: 5px; }  
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 4px; }  
+        .btn-add { background-color: var(--primary-color); }  
+        .btn-sub { background-color: #FF9800; }  
+  
+        /* 照片区域 */  
+        .photo-area {  
+            border-top: 1px dashed #ccc;  
+            padding-top: 10px;  
+            text-align: center;  
+        }  
+        .photo-input-label {  
+            display: inline-block;  
+            background: #607D8B;  
+            color: white;  
+            padding: 8px 15px;  
+            border-radius: 20px;  
+            font-size: 0.9rem;  
+        }  
+        .photo-gallery {  
+            display: flex;  
+            overflow-x: auto;  
+            gap: 8px;  
+            padding: 10px 0;  
+        }  
+        .photo-gallery img {  
+            height: 100px;  
+            border-radius: 4px;  
+            border: 1px solid #ddd;  
+        }  
+  
+        /* 弹窗 */  
+        .modal {  
+            display: none;  
+            position: fixed;  
+            top: 0; left: 0; width: 100%; height: 100%;  
+            background: rgba(0,0,0,0.6);  
+            z-index: 1000;  
+            justify-content: center;  
+            align-items: center;  
+        }  
+        .modal-content {  
+            background: white;  
+            padding: 20px;  
+            border-radius: 12px;  
+            width: 85%;  
+            max-width: 320px;  
+            text-align: center;  
+        }  
+        .modal select {  
+            width: 100%;  
+            padding: 10px;  
+            margin: 15px 0;  
+            font-size: 16px;  
+            border: 1px solid #ccc;  
+        }  
+        .modal-buttons { display: flex; gap: 10px; justify-content: center; }  
+    </style>  
+</head>  
+<body>  
+  
+    <h1>🏃‍♂️ 初三9班语音跑圈计数 (手机兼容版)</h1>  
+  
+    <div class="control-panel">  
+        <div class="status-bar">  
+            <div id="voiceStatus" class="voice-status">🎙️ 点击下方按钮开始</div>  
+            <div style="font-size:0.8rem; color:#999;" id="wakeLockStatus">屏幕常亮: 未激活</div>  
+        </div>  
+  
+        <div id="debugLog" class="debug-log">日志窗口: 等待操作...</div>  
+  
+        <div class="btn-group">  
+            <button onclick="toggleSpeech()" id="voiceBtn" class="btn-start">🎙️ 开启语音监听</button>  
+        </div>  
+  
+        <button id="fixBtn" class="btn-fix" onclick="triggerFix()">❌ 撤回刚才的识别并修正</button>  
+  
+        <div class="btn-row">  
+            <button onclick="globalChange(1)" class="btn-global-add">全班 +1</button>  
+            <button onclick="globalReset()" class="btn-global-reset">清零</button>  
+        </div>  
+  
+        <div class="photo-area">  
+            <label class="photo-input-label">  
+                📷 添加照片  
+                <input type="file" multiple accept="image/*" style="display: none;" onchange="handlePhotos(this)">  
+            </label>  
+            <div class="photo-gallery" id="photoGallery"></div>  
+        </div>  
+    </div>  
+  
+    <div class="grid-container" id="studentGrid"></div>  
+  
+    <div id="fixModal" class="modal">  
+        <div class="modal-content">  
+            <h3>🛠️ 识别修正</h3>  
+            <p>识别文本：<strong id="wrongTranscript" style="color: #d32f2f;"></strong></p>  
+            <p>请选择正确学生：</p>  
+            <select id="studentSelect"></select>  
+            <div class="modal-buttons">  
+                <button onclick="confirmFix()" class="btn-add">确认</button>  
+                <button onclick="closeFixModal()" class="btn-stop">取消</button>  
+            </div>  
+        </div>  
+    </div>  
+  
+    <script>  
+        // --- 1. 数据与初始化 ---  
+        const studentList = [  
+            "熊梓涵", "张梓炟", "陈瑾芮", "张淞文", "郭永骏", "王美童", "梁明轩", "顾凌伊",  
+            "范一行", "陈涵雨欣", "费宣博", "韦元泽", "张烜宁", "向嘉宇", "陆怡煊", "汪晓涵",  
+            "张嘉仁", "高钰涵", "龙瑶琳", "王康宇", "李朝智", "李俊仪", "易芸竹", "袁宇泽",  
+            "熊梓凯", "李雨苗", "李至圣", "张皓哲", "何一凡", "赵子琪", "田袁慧芝", "柯义溱"  
+        ].sort((a, b) => a.localeCompare(b, 'zh-CN'));  
+  
+        let studentData = {};  
+        let recognitionMap = JSON.parse(localStorage.getItem('runCounter_map')) || {};  
+        let studentPinyins = {};  
+        const { pinyin } = pinyinPro;  
+  
+        setTimeout(() => {  
+            studentList.forEach(name => {  
+                studentData[name] = 0;  
+                studentPinyins[name] = pinyin(name, { toneType: 'none', type: 'array' }).join('');  
+            });  
+            initUI();  
+            logDebug("系统就绪，拼音索引已构建");  
+        }, 500);  
+  
+        const grid = document.getElementById('studentGrid');  
+        const debugEl = document.getElementById('debugLog');  
+        const fixBtn = document.getElementById('fixBtn');  
+  
+        function logDebug(msg) {  
+            const time = new Date().toLocaleTimeString();  
+            debugEl.textContent = `[${time}] ${msg}`;  
+        }  
+  
+        function initUI() {  
+            grid.innerHTML = '';  
+            const select = document.getElementById('studentSelect');  
+            select.innerHTML = '';  
+            studentList.forEach(name => {  
+                const card = document.createElement('div');  
+                card.className = 'student-card';  
+                card.id = `card-${name}`;  
+                card.innerHTML = `  
+                    <div class="student-name">${name}</div>  
+                    <div class="lap-display" id="count-${name}">0</div>  
+                    <div class="card-controls">  
+                        <button class="btn-sm btn-sub" onclick="updateLap('${name}', -1)">-</button>  
+                        <button class="btn-sm btn-add" onclick="updateLap('${name}', 1)">+</button>  
+                    </div>  
+                `;  
+                grid.appendChild(card);  
+                const option = document.createElement('option');  
+                option.value = name;  
+                option.textContent = name;  
+                select.appendChild(option);  
+            });  
+        }  
+  
+        function updateLap(name, change, isAuto = false) {  
+            if(!studentData[name] && studentData[name] !== 0) return;  
+            studentData[name] = Math.max(0, studentData[name] + change);  
+            document.getElementById(`count-${name}`).textContent = studentData[name];  
+            if (change > 0) {  
+                const card = document.getElementById(`card-${name}`);  
+                card.classList.remove('just-updated');  
+                void card.offsetWidth;  
+                card.classList.add('just-updated');  
+                if(isAuto) card.scrollIntoView({ behavior: "smooth", block: "center" });  
+                setTimeout(() => card.classList.remove('just-updated'), 1000);  
+            }  
+        }  
+  
+        // --- 核心识别控制部分 ---  
+        let recognition;  
+        let isListening = false;  
+        let wakeLock = null;  
+        let restartTimer = null; // 用于管理重启  
+  
+        async function requestWakeLock() {  
+            try {  
+                if ('wakeLock' in navigator) {  
+                    wakeLock = await navigator.wakeLock.request('screen');  
+                    document.getElementById('wakeLockStatus').textContent = "屏幕常亮: ✅";  
+                }  
+            } catch (err) {}  
+        }  
+  
+        function toggleSpeech() {  
+            if (isListening) {  
+                isListening = false;  
+                if (restartTimer) clearTimeout(restartTimer);  
+                if (recognition) recognition.stop();  
+                updateBtnState();  
+                logDebug("监听已手动停止");  
+            } else {  
+                startRecognition();  
+            }  
+        }  
+  
+        function startRecognition() {  
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {  
+                alert("当前浏览器不支持语音识别，请使用最新版Chrome或Edge。");  
+                return;  
+            }  
+  
+            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;  
+              
+            // 如果已有实例，先强制销毁  
+            if (recognition) {  
+                recognition.abort();  
+            }  
+  
+            recognition = new Speech();  
+            recognition.continuous = false; // 手机端 false 更稳定  
+            recognition.interimResults = false;   
+            recognition.lang = 'zh-CN';  
+  
+            recognition.onstart = () => {  
+                isListening = true;  
+                updateBtnState();  
+                requestWakeLock();  
+                logDebug("监听中，请报名字...");  
+            };  
+  
+            recognition.onerror = (event) => {  
+                if (event.error === 'aborted') {  
+                    // 静默记录中断，不改变按钮状态  
+                    logDebug("系统调度中断，准备自动重连...");  
+                } else {  
+                    logDebug(`识别错误: ${event.error}`);  
+                    if (event.error === 'not-allowed') alert("请开启麦克风权限！");  
+                }  
+            };  
+  
+            recognition.onresult = (event) => {  
+                const transcript = event.results[event.results.length - 1][0].transcript.trim();  
+                logDebug(`听到: "${transcript}"`);  
+                processVoiceCommand(transcript);  
+            };  
+  
+            recognition.onend = () => {  
+                // 如果 isListening 仍为真，说明是系统自动断开或识别完成，需要循环启动  
+                if (isListening) {  
+                    if (restartTimer) clearTimeout(restartTimer);  
+                    restartTimer = setTimeout(() => {  
+                        if (isListening) {  
+                            try {  
+                                recognition.start();  
+                            } catch(e) {  
+                                logDebug("重启失败，请手动点击按钮");  
+                                isListening = false;  
+                                updateBtnState();  
+                            }  
+                        }  
+                    }, 300); // 300ms 间隔，防止安卓引擎响应不及时  
+                } else {  
+                    updateBtnState();  
+                }  
+            };  
+  
+            try {  
+                recognition.start();  
+            } catch (e) {  
+                logDebug("引擎忙，请重试");  
+            }  
+        }  
+  
+        function updateBtnState() {  
+            const btn = document.getElementById('voiceBtn');  
+            const status = document.getElementById('voiceStatus');  
+            if (isListening) {  
+                btn.textContent = "🔴 停止监听";  
+                btn.className = "btn-stop";  
+                status.textContent = "👂 正在聆听...";  
+                status.classList.add('listening');  
+            } else {  
+                btn.textContent = "🎙️ 开启语音监听";  
+                btn.className = "btn-start";  
+                status.textContent = "🎙️ 点击开启";  
+                status.classList.remove('listening');  
+            }  
+        }  
+  
+        // --- 业务逻辑保持原样 ---  
+        let lastAutoAction = null;   
+  
+        function processVoiceCommand(transcript) {  
+            const cleanText = transcript.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()。\s]/g,"");  
+            let matchName = null;  
+            if (recognitionMap[cleanText]) {  
+                matchName = recognitionMap[cleanText];  
+            } else {  
+                const inputPinyin = pinyin(cleanText, { toneType: 'none', type: 'array' }).join('');  
+                let minDist = Infinity;  
+                studentList.forEach(name => {  
+                    const target = studentPinyins[name];  
+                    const dist = levenshtein(inputPinyin, target);  
+                    if (dist < minDist) {  
+                        minDist = dist;  
+                        matchName = name;  
+                    }  
+                });  
+                if (minDist > 4) matchName = null;   
+            }  
+  
+            if (matchName) {  
+                updateLap(matchName, 1, true);  
+                lastAutoAction = { raw: cleanText, name: matchName };  
+                fixBtn.style.display = 'block';  
+                fixBtn.textContent = `撤回 "${cleanText}" -> ${matchName}`;  
+            } else {  
+                logDebug("未匹配到名字");  
+            }  
+        }  
+  
+        function levenshtein(s, t) {  
+            const d = [];  
+            for (let i = 0; i <= s.length; i++) d[i] = [i];  
+            for (let j = 0; j <= t.length; j++) d[0][j] = j;  
+            for (let i = 1; i <= s.length; i++) {  
+                for (let j = 1; j <= t.length; j++) {  
+                    const cost = s[i - 1] === t[j - 1] ? 0 : 1;  
+                    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);  
+                }  
+            }  
+            return d[s.length][t.length];  
+        }  
+  
+        function triggerFix() {  
+            if (!lastAutoAction) return;  
+            updateLap(lastAutoAction.name, -1);  
+            document.getElementById('wrongTranscript').textContent = lastAutoAction.raw;  
+            document.getElementById('studentSelect').value = lastAutoAction.name;  
+            document.getElementById('fixModal').style.display = 'flex';  
+        }  
+  
+        function confirmFix() {  
+            const correctName = document.getElementById('studentSelect').value;  
+            const wrongText = lastAutoAction.raw;  
+            updateLap(correctName, 1, true);  
+            recognitionMap[wrongText] = correctName;  
+            localStorage.setItem('runCounter_map', JSON.stringify(recognitionMap));  
+            closeFixModal();  
+        }  
+  
+        function closeFixModal() {  
+            document.getElementById('fixModal').style.display = 'none';  
+            fixBtn.style.display = 'none';  
+        }  
+  
+        function globalChange(val) { studentList.forEach(n => updateLap(n, val)); }  
+        function globalReset() { if(confirm("清零全班数据?")) studentList.forEach(n => updateLap(n, -studentData[n])); }  
+  
+        function handlePhotos(input) {  
+            const gallery = document.getElementById('photoGallery');  
+            if (input.files) {  
+                Array.from(input.files).forEach(file => {  
+                    const reader = new FileReader();  
+                    reader.onload = function(e) {  
+                        const img = document.createElement('img');  
+                        img.src = e.target.result;  
+                        gallery.appendChild(img);  
+                    }  
+                    reader.readAsDataURL(file);  
+                });  
+            }  
+        }  
+    </script>  
+</body>  
+</html>  
